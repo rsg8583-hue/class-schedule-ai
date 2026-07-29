@@ -1,0 +1,113 @@
+import asyncio
+from enum import Enum
+from pydantic import BaseModel, Field
+from pydantic_ai import Agent, RunContext
+
+# Base Models
+class FantasyFBRoster(BaseModel):
+    #Schema for extracting structured event info from unstructured text.
+    player_name: str = Field(description="Name of NFL player on roster")
+    player_position: str = Field(description="Position of NFL player")
+    player_team: str = Field(description="Team that the player plays on")
+
+class RosterResponse(BaseModel):
+    message: str = Field(description="Summary of the action taken and why")
+
+# Agents
+extractor_agent = Agent(
+    'openai:gpt-4o-mini',
+    output_type=FantasyFBRoster,
+    system_prompt="Extract key player parameters accurately from messy user notes."
+)
+
+manager_agent = Agent(
+    'openai:gpt-4o-mini',
+    output_type=RosterResponse,
+    system_prompt=(
+        "You are in charge of managing a fantasy football roster using the provided tools. "
+        "Only call the `display_roster` tool if the user explicitly asks to view, show, or display the roster. "
+        "Do NOT call `display_roster` when adding, dropping, or trading players."
+    )
+)
+
+# ASYNCIO: Define the asynchronous workflow function
+async def process_player(player_text: str) -> FantasyFBRoster:
+    print("Sending text to LLM (non-blocking)...\n")
+    result = await extractor_agent.run(f"Extract details from this note: '{player_text}'")
+    return result.output
+
+roster_db: list[FantasyFBRoster] = []
+
+@manager_agent.tool
+async def add_player_to_roster(ctx: RunContext[None], player_name: str) -> str:
+    # Add a new NFL player to the fantasy roster array.
+    extracted_data: FantasyFBRoster = await process_player(player_name)
+    if any(p.player_name.lower() == player_name.lower() for p in roster_db):
+        return f"{player_name} is already on the roster."
+
+    print(f"Name:       {extracted_data.player_name}")
+    print(f"Position:   {extracted_data.player_position}")
+    print(f"Team:       {extracted_data.player_team}\n")
+    
+    roster_db.append(extracted_data)
+    return f"Successfully added {player_name} to roster."
+
+@manager_agent.tool
+async def drop_player_from_roster(ctx: RunContext[None], player_name: str) -> str:
+    # Remove an existing NFL player from the fantasy roster array.
+    global roster_db
+    if not any(p.player_name.lower() == player_name.lower() for p in roster_db):
+        return f"{player_name} is not on your roster."
+    
+    roster_db = [p for p in roster_db if p.player_name.lower() != player_name.lower()]
+    return f"Successfully removed {player_name} from roster."
+
+@manager_agent.tool
+async def trade_players(ctx: RunContext[None], player_name1: str, player_name2: str) -> str:
+    # Add a new NFL player to the fantasy roster array.
+    global roster_db
+    extracted_data2: FantasyFBRoster = await process_player(player_name2)
+    if not any(p.player_name.lower() == player_name1.lower() for p in roster_db):
+        return f"Trade failed: {player_name1} is not on the roster. No action taken."
+    if any(p.player_name.lower() == player_name2.lower() for p in roster_db):
+        return f"{player_name2} is already on the roster. No action taken."
+
+    roster_db = [p for p in roster_db if p.player_name.lower() != player_name1.lower()]
+
+    print(f"Name:       {extracted_data2.player_name}")
+    print(f"Position:   {extracted_data2.player_position}")
+    print(f"Team:       {extracted_data2.player_team}\n")
+    
+    roster_db.append(extracted_data2)
+    return f"Successfully added {player_name2} to roster."
+
+@manager_agent.tool
+async def display_roster(ctx: RunContext[None], player_name: str) -> str:
+    # Remove an existing NFL player from the fantasy roster array.
+    if not roster_db:
+        return f"The Roster is empty."
+
+    pn = 1
+    for p in roster_db:
+        print(f"{pn}. Name:       {p.player_name}")
+        print(f"   Position:   {p.player_position}")
+        print(f"   Team:       {p.player_team}\n")
+        pn+=1
+    return f"Roster displayed."
+
+
+async def main():
+    print("--- Starting Fantasy Football Roster Workflow ---")
+    while True:
+        raw_note = input("Add, drop or trade player, display roster or type 'exit': ")
+        print()
+        if raw_note.strip().lower() == 'exit':
+            break
+
+        result = await manager_agent.run(raw_note)
+        print("Message:", result.output.message, "\n")
+
+
+# Run the async event loop
+if __name__ == "__main__":
+    asyncio.run(main())
