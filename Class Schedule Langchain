@@ -1,0 +1,50 @@
+import sqlite3
+import asyncio
+from dotenv import load_dotenv
+from langchain_community.utilities import SQLDatabase
+from langchain_community.tools import QuerySQLDatabaseTool
+from langchain_classic.chains import create_sql_query_chain
+from langchain_openai import ChatOpenAI
+
+# Load environment variables from .env file
+load_dotenv()
+
+# 1. Connect to SQLite DB wrapper
+db = SQLDatabase.from_uri("sqlite:///schedule_database.db")
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+# 2. Build the query generation chain (Generates SQL from user text)
+write_query = create_sql_query_chain(llm, db)
+
+# 3. Tool to execute the generated query
+execute_query = QuerySQLDatabaseTool(db=db)
+
+async def main():
+    while True:
+        user_question = input("Ask about your class schedule or type 'exit': ")
+        if user_question.strip().lower() == 'exit':
+            break
+
+        # Step A: Chain generates the SQL query
+        raw_sql = write_query.invoke({"question": user_question})
+
+        # Clean up common prefixes or markdown wrapper formatting from LLM
+        clean_sql = (
+            raw_sql.replace("SQLQuery:", "")
+                .replace("```sql", "")
+                .replace("```", "")
+                .strip()
+        )
+        
+        print(f"\nGenerated SQL: {clean_sql}")
+        
+        # Step B: Tool runs SQL against DB
+        result = execute_query.invoke(clean_sql)
+        print(f"DB Output: {result}")
+
+        # Step C: Formulate final response
+        response = llm.invoke(f"Question: {user_question}\nSQL Result: {result}\nAnswer:")
+        print("Final Answer:", response.content)
+
+if __name__ == "__main__":
+    asyncio.run(main())

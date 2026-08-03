@@ -1,0 +1,10 @@
+import os
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+
+load_dotenv()
+
+api_key = os.getenv("OPENAI_API_KEY")
+print("Loaded Key:", api_key)  # This will print your key or 'None' if it failed to load
+
+llm = ChatOpenAI(model="gpt-4o-mini", api_key=api_key, temperature=0)
