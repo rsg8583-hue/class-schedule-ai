@@ -1,0 +1,14 @@
+# Ignore virtual environment
+.venv/
+venv/
+ENV/
+
+# Ignore secret keys
+.env
+
+# Ignore SQLite databases (if you don't want to commit local test DBs)
+*.db
+
+# Ignore Python bytecode caches
+__pycache__/
+*.pyc
