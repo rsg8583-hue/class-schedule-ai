@@ -1,7 +1,11 @@
 import asyncio
+from dotenv import load_dotenv
 from enum import Enum
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Base Models
 class FantasyFBRoster(BaseModel):
